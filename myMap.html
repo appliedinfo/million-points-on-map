@@ -17,16 +17,17 @@
     <script src="lib/ngeohash.js"></script>
     <script src="lib/leaflet-marker-cluster.js"></script>
     <script src="lib/parse-1.2.13.min.js"></script>
+    <script src="https://code.jquery.com/jquery-1.12.2.min.js"   integrity="sha256-lZFHibXzMHo3GGeehn1hudTAP3Sc0uKXBXAzHX1sjtk="   crossorigin="anonymous"></script>
 </head>
 <body>
 <div id="map"></div>
 <script>
-    map = L.map('map',{minZoom:3});
+    map = L.map('map',{minZoom:1});
     var mapboxTiles = L.tileLayer('https://{s}.tiles.mapbox.com/v3/{mapid}/{z}/{x}/{y}.png', {
     mapid: 'cyrilcherian.cc320505'
     }).addTo(map);
     map.on('load', function(e){search()});
-    map.setView([22.295006, 78.945313], 3);
+    map.setView([4.295006, -71.945313], 1);
     map.on('zoomend dragend',function(e){search();});
     markers = L.markerClusterGroup({
     chunkedLoading: true,
@@ -57,6 +58,12 @@
             }*/
     }
     function loadPoints(){
+        console.log("calling ES..");
+        // var elasticsearch = require('elasticsearch');
+        var client = new elasticsearch.Client({
+          host: 'localhost:9200',
+          log: 'trace'
+        });
         var b = map.getBounds();
         var zoom = 3;
         if(map.getZoom() >= 5 && map.getZoom() <= 8){
@@ -76,47 +83,41 @@
         }
 
         client.search ({
-                index: 'points',
+                index: 'place',
                     body: {
-                            "query": {
-                                "filtered" : {
-                                    "query": {
-                                        "match_all":{}
-                                    },
-                                    "filter":{
-                                        "geo_bounding_box" : {
-                                            "location" : {
-                                                "top_left": {
-                                                    "lat": b.getNorthWest().lat,
-                                                    "lon": b.getNorthWest().lng
-                                                },
-                                                "bottom_right": {
-                                                    "lat": b.getSouthEast().lat,
-                                                    "lon": b.getSouthEast().lng
-                                                }
-                                            }
-                                        }
-                                    }    
-                                }
-                            },
-                            aggs: {
-                                "zoom": {
-                                    "geohash_grid": { 
-                                        "field": "location",
-                                        "precision": zoom
-                                    },aggs: {
-                                        "sentiment_avg": {
-                                           "avg": {
-                                              "field": "sentiment"
-                                           }
-                                        }
-                                    }
-                                 }
-                            }
-
-                    }
+  "query": {
+    "bool": {
+      "must": {
+        "match_all": {}
+      },
+      "filter": {
+         "geo_bounding_box":{
+               "point":{
+                  "top_left":{
+                     "lat": 5.1,
+                     "lon": -75
+                  },
+                  "bottom_right":{
+                     "lat": 2.0,
+                     "lon": -71.0
+                  }
+               }
+            }
+      }
+    }
+  },
+   "aggs":{
+      "zoom":{
+         "geohash_grid":{
+            "field":"point",
+            "precision": zoom
+         }
+      }
+   }
+}
                 }).then(function (resp) {
                     markers.clearLayers();
+                    console.log("here...");
                     makePoints(resp.aggregations.zoom.buckets);
                 }, function (err) {
                     console.trace(err.message);
@@ -131,11 +132,12 @@
             //obj.id = guid();
             //var bounds = geohash.decode_bbox(agg.key);
             var center = geohash.decode (agg.key);
-            var avg = Math.ceil(agg.sentiment_avg.value)
+            // var avg = Math.ceil(agg.sentiment_avg.value)
+            var avg =1;
             var myIcon = L.divIcon({ html: '<div class="clustergroup'+avg+' leaflet-marker-icon marker-cluster marker-cluster-medium leaflet-zoom-animated leaflet-clickable" tabindex="0" style="margin-left: -20px; margin-top: -20px; width: 40px; height: 40px; z-index: 233;"><div><span>'+agg.doc_count+'</span></div></div>' });
             var marker = L.marker(new L.LatLng(center.latitude, center.longitude),{icon:myIcon});
             marker.count = agg.doc_count;
-            marker.sentiment = agg.sentiment_avg.value;
+            // marker.sentiment = agg.sentiment_avg.value;
             marker.bindPopup(''+agg.doc_count);
             markerList.push(marker);
              /*obj.min = min;
@@ -166,11 +168,11 @@
             var city = cities[count];
             var point = {lat: city.slat, lon: city.slon};
             client.index({
-              index: 'points',
-              type: 'point',
+              index: 'place',
+              type: 'place',
               body: {
-                "location": point,
-                "sentiment": Math.floor((Math.random() * 10))
+                "point": point
+                
               }
             }, 
             function (err, resp) {
@@ -211,17 +213,37 @@
                 "bounds": b1,
                 "zoom": zoom
               };
-        Parse.initialize("OjImjwifOD5EladE5585UAS3CJGy7ednZjucd5SE", "6CE4fybH3Cg4fiqbvxsAE8osmX6MsEIWou0Kudr9");
-        Parse.Cloud.run('search', d, {
-          success: function(resp) {
-            markers.clearLayers();
-            var r = JSON.parse(resp)
-            makePoints(r.aggregations.zoom.buckets);
-          },
-          error: function(error) {
-            console.log(error)
-          }
-        });
+
+        loadPoints()
+         //making elastic api call via parse visit https://parse.com/
+        // var d = {
+        //         "bounds": b1,
+        //         "zoom": zoom
+        //       };
+        //         $.ajax({
+        //     method: "POST",
+        //     url: "https://parseapi.back4app.com/functions/search",
+        //     data: JSON.stringify(d),
+        //         dataType: "text",
+        //     headers: {
+        //         "content-type": "application/json",
+        //         "X-Parse-Application-Id": "OjImjwifOD5EladE5585UAS3CJGy7ednZjucd5SE",
+        //         "X-Parse-REST-API-Key": "TC3nNk6nae1COCn0bZJ0XE76KBT4F5eR4Pm3gPWR"
+        //     }
+        // })
+        // .done(function(resp) {
+        //     markers.clearLayers();
+        //     var r = JSON.parse(resp)
+        //     console.log(r);
+        //     r = JSON.parse(r.result)
+        //     makePoints(r.aggregations.zoom.buckets);
+        // })
+        // .fail(function(error) {
+        //     console.log(error)
+        // });
+        console.log("searching...")
+
+        
    }
    function guid() {
       function s4() {
