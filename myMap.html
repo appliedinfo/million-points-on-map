@@ -27,6 +27,7 @@
 <body>
 <div id="map"></div>
 <script>
+
     map = L.map('map', {minZoom: 1});
     var mapboxTiles = L.tileLayer('https://{s}.tiles.mapbox.com/v3/{mapid}/{z}/{x}/{y}.png', {
         mapid: 'cyrilcherian.cc320505'
@@ -34,14 +35,14 @@
     map.on('load', function (e) {
         search()
     });
-    map.setView([4.295006, -71.945313], 1);
+    map.setView([20.4925, -10.9018], 2);
     map.on('zoomend dragend', function (e) {
         search();
     });
     markers = L.markerClusterGroup({
         chunkedLoading: true,
         spiderfyOnMaxZoom: false,
-        showCoverageOnHover: true,
+        showCoverageOnHover: false,
         chunkProgress: updateProgressBar,
         iconCreateFunction: function (cluster) {
             var markers = cluster.getAllChildMarkers();
@@ -49,10 +50,10 @@
             var markerSentiment = 0;
             markers.forEach(function (m) {
                 markerCount = markerCount + m.count;
-                markerSentiment = markerSentiment + m.sentiment
+                // markerSentiment = markerSentiment + m.sentiment
             });
-            var avg = Math.ceil(markerSentiment / cluster.getAllChildMarkers().length);
-
+            // var avg = Math.ceil(markerSentiment / cluster.getAllChildMarkers().length);
+            var avg=1;
             return new L.DivIcon({html: '<div class=" clustergroup' + avg + ' leaflet-marker-icon marker-cluster marker-cluster-medium leaflet-zoom-animated leaflet-clickable" tabindex="0" style="margin-left: -20px; margin-top: -20px; width: 40px; height: 40px; z-index: 233;"><div><span>' + markerCount + '</span></div></div>'});
         }
     });
@@ -94,6 +95,14 @@
             zoom = 8;
         }
 
+        var b1 = {
+            "trlat": b.getNorthWest().lat,
+            "trlon": b.getNorthWest().lng,
+            "bllat": b.getSouthEast().lat,
+            "bllon": b.getSouthEast().lng
+        }
+        // console.log(b1);
+ // 
         client.search({
             index: 'place',
             body: {
@@ -106,12 +115,12 @@
                             "geo_bounding_box": {
                                 "point": {
                                     "top_left": {
-                                        "lat": 5.1,
-                                        "lon": -75
+                                        "lat": 90,
+                                        "lon": -180
                                     },
                                     "bottom_right": {
-                                        "lat": 2.0,
-                                        "lon": -71.0
+                                        "lat": -90,
+                                        "lon": 180
                                     }
                                 }
                             }
@@ -130,12 +139,12 @@
         }).then(function (resp) {
             markers.clearLayers();
             console.log("here...");
-            makePoints(resp.aggregations.zoom.buckets);
+            makePoints(resp.aggregations.zoom.buckets, resp.hits.hits);
         }, function (err) {
             console.trace(err.message);
         });
     }
-    function makePoints(aggs) {
+    function makePoints(aggs, hits) {
         points = {};
 
         var markerList = [];
@@ -143,14 +152,17 @@
             //var obj = {};
             //obj.id = guid();
             //var bounds = geohash.decode_bbox(agg.key);
+            // console.log(hits);
             var center = geohash.decode(agg.key);
             // var avg = Math.ceil(agg.sentiment_avg.value)
             var avg = 1;
-            var myIcon = L.divIcon({html: '<div class="clustergroup' + avg + ' leaflet-marker-icon marker-cluster marker-cluster-medium leaflet-zoom-animated leaflet-clickable" tabindex="0" style="margin-left: -20px; margin-top: -20px; width: 40px; height: 40px; z-index: 233;"><div><span>' + agg.doc_count + '</span></div></div>'});
+            var myIcon = L.divIcon({html: '<div class="clustergroup' + "12" + ' leaflet-marker-icon marker-cluster marker-cluster-medium leaflet-zoom-animated leaflet-clickable" tabindex="0" style="margin-left: -20px; margin-top: -20px; width: 40px; height: 40px; z-index: 233;"><div><span>' + agg.doc_count + '</span></div></div>'});
+            // console.log(center.latitude)
             var marker = L.marker(new L.LatLng(center.latitude, center.longitude), {icon: myIcon});
             marker.count = agg.doc_count;
             // marker.sentiment = agg.sentiment_avg.value;
-            marker.bindPopup('' + agg.doc_count);
+            // console.log(hits[0]);
+            marker.bindPopup(center.latitude.toString(), center.longitude.toString() + agg.doc_count);
             markerList.push(marker);
             /*obj.min = min;
              obj.max = max;
