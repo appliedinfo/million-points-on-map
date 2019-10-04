@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Full Canvas</title>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="css/leaflet.css"/>
+    <link rel="stylesheet" href="css/marker-cluster-default.css"/>
+    <!--[if lte IE 8]>
+    <link rel="stylesheet" href="http://cdn.leafletjs.com/leaflet-0.7.1/leaflet.ie.css"/>
+    <![endif]-->
+    <style>
+        html, body, #map {
+            height: 100%;
+            padding: 0;
+            margin: 0;
+        }
+    </style>
+    <script src="lib/leaflet.js"></script>
+    <script src="lib/elasticsearch.js"></script>
+    <script src="lib/ngeohash.js"></script>
+    <script src="lib/leaflet-marker-cluster.js"></script>
+    <script src="lib/parse-1.2.13.min.js"></script>
+</head>
+<body>
+<div id="map"></div>
+<script>
+    map = L.map('map', {minZoom: 1});
+    var mapboxTiles = L.tileLayer('https://{s}.tiles.mapbox.com/v3/{mapid}/{z}/{x}/{y}.png', {
+        mapid: 'cyrilcherian.cc320505'
+    }).addTo(map);
+    map.on('load', function (e) {
+        search()
+    });
+    map.setView([20.4925, -10.9018], 3);
+    map.on('zoomend dragend', function (e) {
+        search();
+    });
+    markers = L.markerClusterGroup({
+        chunkedLoading: true,
+        spiderfyOnMaxZoom: false,
+        showCoverageOnHover: true,
+        iconCreateFunction: function (cluster) {
+            var markers = cluster.getAllChildMarkers();
+            var markerCount = 0;
+            var markerSentiment = 0;
+            markers.forEach(function (m) {
+                markerCount = markerCount + m.count;
+            });
+            var avg = Math.ceil(markerSentiment / cluster.getAllChildMarkers().length);
+
+            return new L.DivIcon({html: '<div class=" clustergroup' + avg + ' leaflet-marker-icon marker-cluster marker-cluster-medium leaflet-zoom-animated leaflet-clickable" tabindex="0" style="margin-left: -20px; margin-top: -20px; width: 40px; height: 40px; z-index: 233;"><div><span>' + markerCount + '</span></div></div>'});
+        }
+    });
+    map.addLayer(markers);
+
+    function closestLocation(targetLocation, locationData, count) {
+        function vectorDistance(dx, dy) {
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+
+        function locationDistance(location1, location2) {
+            var dx = location1.latitude - location2.latitude,
+                    dy = location1.longitude - location2.longitude;
+
+            return vectorDistance(dx, dy);
+        }
+
+        function getpoint(locat_data) {
+            var point = locat_data.reduce(function (prev, curr) {
+                var prevDistance = locationDistance(targetLocation, prev),
+                        currDistance = locationDistance(targetLocation, curr);
+                return (prevDistance < currDistance) ? prev : curr;
+            });
+            return point;
+        }
+
+        var i = 0;
+        var arr = [];
+        while (i < count) {
+            var loc_data = locationData.slice();
+            if (loc_data.length > 0) {
+                var point = getpoint(loc_data);
+                var flag = false;
+                locationData.map(function (it, ind) {
+                    if (it.latitude == point.latitude && it.longitude == point.longitude) {
+                        locationData.pop(ind);
+                    }
+                });
+                arr.push(point);
+//                console.log(point);
+                i += 1;
+            }
+            else {
+                i = count + 1;
+            }
+
+//            }
+        }
+        return arr;
+    }
+    function makePoints(aggs, hits) {
+        points = {};
+        var markerList = [];
+        aggs.forEach(function (agg, index) {
+            var center = geohash.decode(agg.key);
+            var avg = 1;
+            var myIcon = L.divIcon({html: '<div class="clustergroup' + avg + ' leaflet-marker-icon marker-cluster marker-cluster-medium leaflet-zoom-animated leaflet-clickable" tabindex="0" style="margin-left: -20px; margin-top: -20px; width: 40px; height: 40px; z-index: 233;"><div><span>' + agg.doc_count + '</span></div></div>'});
+            var marker = L.marker(new L.LatLng(center.latitude, center.longitude), {icon: myIcon});
+            var closest_data = [];
+            var count = agg.doc_count;
+
+            hits.forEach(function (hit, indx) {
+                closest_data.push({
+                    "latitude": hit._source.location.lat,
+                    "longitude": hit._source.location.lon,
+                    "full_name":hit._source.full_name
+                })
+            });
+            var closest_point = closestLocation(center, closest_data, count);
+            var str = '';
+            marker.count = count;
+            try {
+                if (agg.doc_count < 11) {
+                    closest_point.forEach(function (item, indb) {
+                        str += " " + item.latitude + " " + item.longitude;
+                        var x = L.marker([item.latitude, item.longitude]);
+                        x.bindPopup(" " + item.full_name );
+                        x.addTo(map);
+                    });
+                }
+            }
+            catch (err) {
+                marker.bindPopup('error' + agg.doc_count);
+
+            }
+            marker.bindPopup('<a href="' + str + '" target="_blank">' + +'</a>');
+            if (agg.doc_count > 1) {
+                markerList.push(marker);
+            }
+
+
+        });
+        markers.addLayers(markerList);
+    }
+    function search() {
+        var b = map.getBounds();
+        //Get the zoom level
+        var zoom = 3;
+        if (map.getZoom() >= 5 && map.getZoom() <= 8) {
+            zoom = 4;
+        }
+        else if (map.getZoom() >= 9 && map.getZoom() <= 11) {
+            zoom = 5;
+        }
+        else if (map.getZoom() >= 12 && map.getZoom() <= 14) {
+            zoom = 6;
+        }
+        else if (map.getZoom() >= 15 && map.getZoom() <= 17) {
+            zoom = 7;
+        }
+        else if (map.getZoom() >= 18) {
+            zoom = 8;
+        }
+        var client = new elasticsearch.Client({
+            host: 'localhost:9200',
+            log: 'trace'
+        });
+        client.search({
+            index: 'tpdb86',
+            body: {
+                "query": {
+                    "bool": {
+                        "must": {
+                            "match_all": {}
+                        },
+                        "filter": {
+                            "geo_bounding_box": {
+                                "location": {
+                                    "top_left": {
+                                        "lat": b.getNorthWest().lat,
+                                        "lon": b.getNorthWest().lng
+                                    },
+                                    "bottom_right": {
+                                        "lat": b.getSouthEast().lat,
+                                        "lon": b.getSouthEast().lng
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "aggs": {
+                    "zoom": {
+                        "geohash_grid": {
+                            "field": "location",
+                            "precision": zoom
+                        }
+                    }
+                }
+            }
+        }).then(function (resp) {
+            markers.clearLayers();
+            var r = JSON.parse(JSON.stringify(resp));
+            makePoints(r.aggregations.zoom.buckets, resp.hits.hits);
+        }, function (err) {
+            console.trace(err.message);
+        });
+
+    }
+
+</script>
+</body>
+</html>
