@@ -107,6 +107,7 @@
             var avg = 1;
             var myIcon = L.divIcon({html: '<div class="clustergroup' + avg + ' leaflet-marker-icon marker-cluster marker-cluster-medium leaflet-zoom-animated leaflet-clickable" tabindex="0" style="margin-left: -20px; margin-top: -20px; width: 40px; height: 40px; z-index: 233;"><div><span>' + agg.doc_count + '</span></div></div>'});
             var marker = L.marker(new L.LatLng(center.latitude, center.longitude), {icon: myIcon});
+//            var marker = L.marker([center.latitude, center.longitude]);
             var closest_data = [];
             var count = agg.doc_count;
 
@@ -114,18 +115,43 @@
                 closest_data.push({
                     "latitude": hit._source.location.lat,
                     "longitude": hit._source.location.lon,
-                    "full_name":hit._source.full_name
+                    "full_name": hit._source.ind_vert,
+                    "revenue": hit._source.revenue
                 })
             });
             var closest_point = closestLocation(center, closest_data, count);
             var str = '';
             marker.count = count;
+            var greenIcon = L.icon({
+                            iconUrl: 'lib/images/green_icon.png',
+//                            shadowUrl: 'lib/images/marker-shadow.png',
+                            iconSize: [38, 60], // size of the icon
+                            shadowSize: [50, 64], // size of the shadow
+                            iconAnchor: [22, 94], // point of the icon which will correspond to marker's location
+                            shadowAnchor: [4, 62],  // the same for the shadow
+                            popupAnchor: [-3, -76] // point from which the popup should open relative to the iconAnchor
+                        });
+            var blueIcon = L.icon({
+                            iconUrl: 'lib/images/blue_icon.png',
+//                            shadowUrl: 'lib/images/marker-shadow.png',
+                            iconSize: [38, 60], // size of the icon
+                            shadowSize: [50, 64], // size of the shadow
+                            iconAnchor: [22, 94], // point of the icon which will correspond to marker's location
+                            shadowAnchor: [4, 62],  // the same for the shadow
+                            popupAnchor: [-3, -76] // point from which the popup should open relative to the iconAnchor
+                        });
             try {
-                if (agg.doc_count < 11) {
+                if (agg.doc_count < 100) {
                     closest_point.forEach(function (item, indb) {
-                        str += " " + item.latitude + " " + item.longitude;
-                        var x = L.marker([item.latitude, item.longitude]);
-                        x.bindPopup(" " + item.full_name );
+                        str += " " + item.full_name + " Revenue $" + item.revenue + "\n";
+                        if (item.revenue < 5000){
+                            var x = L.marker([item.latitude, item.longitude],{icon: greenIcon});
+                        }
+                        else {
+                            var x = L.marker([item.latitude, item.longitude],{icon: blueIcon});
+                        }
+                        x.count = count;
+                        x.bindPopup(" " + item.full_name + " Revenue$ " + item.revenue + "\n");
                         x.addTo(map);
                     });
                 }
@@ -134,8 +160,8 @@
                 marker.bindPopup('error' + agg.doc_count);
 
             }
-            marker.bindPopup('<a href="' + str + '" target="_blank">' + +'</a>');
-            if (agg.doc_count > 1) {
+            marker.bindPopup(str, ' ');
+            if (agg.doc_count > 2) {
                 markerList.push(marker);
             }
 
@@ -167,7 +193,7 @@
             log: 'trace'
         });
         client.search({
-            index: 'tpdb86',
+            index: 'orian',
             body: {
                 "query": {
                     "bool": {
